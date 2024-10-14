@@ -5,7 +5,7 @@
 ## AddOnVersion: 010600
 ## APIVersion: 101043 101044
 ## IsLibray: False
-## DependsOn: LibAddonMenu-2.0>=37 LibAddonMenuOrderListBox>=012 LibScrollableMenu>=020300
+## DependsOn: LibAddonMenu-2.0>=37 LibAddonMenuOrderListBox>=012 LibScrollableMenu>=020301
 ## SavedVariables: AddonCategoryVariables
 
 ; This Add-on is not created by, affiliated with or sponsored by ZeniMax Media Inc. or its affiliates. 
