@@ -70,6 +70,11 @@ function AddonCategory.OpenLAMSettingsMenu()
     UpdateAllChoices()
 end
 
+local function UpdateDisabledStateOfLinkCategoryButtons()
+    AddonCategory_AddonNonAssigned_button:UpdateDisabled()
+    AddonCategory_AddonLink_button:UpdateDisabled()
+end
+
 local firstOpenOfLAMPanel = true
 function AddonCategory.CreateSettingsWindow()
 	local panelData = {
@@ -136,12 +141,25 @@ function AddonCategory.CreateSettingsWindow()
                 local selectedEntryCategoryName = selectedEntry.text
                 AddonCategory.indexCategories[selectedEntryCategoryName] = nil
 
+                categoryIndex         = nil
+                categoryToChangeIndex = nil
+                categoryName          = nil
+                newCategoryName       = nil
+
                 UpdateAllChoices()
+                UpdateDisabledStateOfLinkCategoryButtons()
             end,
             addEntryCallbackFunction = function(orderListBox, newEntry, orderListBoxData)
                 if newEntry == nil then return false end
+
+                categoryIndex         = nil
+                categoryToChangeIndex = nil
+                categoryName          = nil
+                newCategoryName       = nil
+
                 --local newEntryIndex = newEntry.uniqueKey
                 UpdateAllChoices()
+                UpdateDisabledStateOfLinkCategoryButtons()
             end,
         },
 
@@ -258,7 +276,7 @@ function AddonCategory.CreateSettingsWindow()
                     addon = v
                     break
                 end
-                Addon_dropdown:UpdateValue()
+                AddonCategory_Addon_dropdown:UpdateValue()
             end,
             disabled = function() return #AddonCategory.listNonAssigned <= 0 end,
 			width = "half",
@@ -271,29 +289,31 @@ function AddonCategory.CreateSettingsWindow()
             func = function()
                 if addon ~= nil and categoryIndex ~= nil then
                     local l_categoryName = sV.listCategory[categoryIndex] ~= nil and sV.listCategory[categoryIndex].text or nil
+
+                    categoryIndex         = nil
+                    categoryToChangeIndex = nil
+                    categoryName          = nil
+                    newCategoryName       = nil
+
                     if l_categoryName ~= nil then
                         sV[addon] = l_categoryName
                         d("Addon |cFFFFFF" .. addon .. "|r linked to |cFFFFFF" .. l_categoryName .. "|r category.")
-
-                        categoryIndex         = nil
-                        categoryToChangeIndex = nil
-                        categoryName          = nil
-                        newCategoryName       = nil
 
                         for i, v in ipairs(AddonCategory.listNonAssigned) do
                             if v == addon then
                                 table.remove(AddonCategory.listNonAssigned, i)
                                 addon = nil
-                                Addon_dropdown:UpdateValue()
+                                AddonCategory_Addon_dropdown:UpdateValue()
                                 break
                             end
                         end
-                        --AddonCategory_AddonNonAssigned_button:UpdateDisabled() --Should auto update disabled state due to pabel regisetrForRefresh = true
+                        --AddonCategory_AddonNonAssigned_button:UpdateDisabled() --Should auto update disabled state due to panel registerForRefresh = true
                     end
                 end
             end,
 			width = "half",
-            disabled = function() return #AddonCategory.listNonAssigned <= 0 or addon == nil or categoryIndex == nil end,
+            disabled = function() return addon == nil or categoryIndex == nil end,
+            reference = "AddonCategory_AddonLink_button"
         },
 		{
 			type = "header",

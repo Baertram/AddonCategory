@@ -2,7 +2,7 @@ AddonCategory = AddonCategory or {}
 local AddonCategory = AddonCategory
 
 AddonCategory.name = "AddonCategory"
-AddonCategory.version = "1.6.0"
+AddonCategory.version = "1.6.1"
 AddonCategory.author = "Floliroy, fixed and updated by Baertram"
 local MAJOR = AddonCategory.name
 

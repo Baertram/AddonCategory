@@ -1,8 +1,8 @@
 
 ## Title: AddonCategory
 ## Author: Floliroy & Baertram
-## Version: 1.6.0
-## AddOnVersion: 010600
+## Version: 1.6.1
+## AddOnVersion: 010601
 ## APIVersion: 101043 101044
 ## IsLibray: False
 ## DependsOn: LibAddonMenu-2.0>=37 LibAddonMenuOrderListBox>=012 LibScrollableMenu>=020301
