@@ -2,7 +2,7 @@ AddonCategory = AddonCategory or {}
 local AddonCategory = AddonCategory
 
 AddonCategory.name = "AddonCategory"
-AddonCategory.version = "1.6.1"
+AddonCategory.version = "1.6.2"
 AddonCategory.author = "Floliroy, fixed and updated by Baertram"
 local MAJOR = AddonCategory.name
 
@@ -1063,6 +1063,7 @@ local function callbackEdit(tabData, l_toolBar, l_categoryName)
             enabled = false,--will get enabled by the checkbox's callback
             isSaveButton = true,
             buttonTemplate = 'ZO_DefaultButton',
+            doNotFilter = function() return true end,
         })
 
         AddCustomScrollableSubMenuEntry("Edit assigned addons", assignedAddonsSubmenu)
@@ -1100,6 +1101,7 @@ local function callbackEdit(tabData, l_toolBar, l_categoryName)
             enabled = false,--will get enabled by the checkbox's callback
             isSaveButton = true,
             buttonTemplate = 'ZO_DefaultButton',
+            doNotFilter = function() return true end,
         })
 
         AddCustomScrollableSubMenuEntry("Edit unassigned addons", unAssignedAddonsSubmenu)
