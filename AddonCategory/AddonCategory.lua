@@ -2,7 +2,7 @@ AddonCategory = AddonCategory or {}
 local AddonCategory = AddonCategory
 
 AddonCategory.name = "AddonCategory"
-AddonCategory.version = "1.6.2"
+AddonCategory.version = "1.6.3"
 AddonCategory.author = "Floliroy, fixed and updated by Baertram"
 local MAJOR = AddonCategory.name
 
@@ -28,6 +28,9 @@ local addonsListCtrl = ZO_AddOnsList
 
 AddonCategory.indexCategories = {}
 local ac_indexCategories = AddonCategory.indexCategories
+
+local currentAddOnCategoriesLookup = {}
+AddonCategory.currentAddOnCategoriesLookup = currentAddOnCategoriesLookup
 
 
 local defaultCustomScrollableMenuOptions = {
@@ -90,30 +93,50 @@ local function updateAddonManagerDataIfShown()
     ADD_ON_MANAGER:RefreshData()
 end
 
-local function afterSettigs()
+local function updateCurrentAddOnCategories(updateListCategoriesAtSV)
     if sV == nil then return end
+    updateListCategoriesAtSV = updateListCategoriesAtSV or false
 
     local listCategories = sV.listCategory
     if listCategories == nil then return end
 
     local fixedCategories = {}
+    currentAddOnCategoriesLookup = {}
 
     for k, vData in ipairs(listCategories) do
-        --List data is no table (format needed for LibAddonMenuOrderListBox widget's list)
-        if type(vData) ~= "table" then
-            fixedCategories[k] = {
-                uniqueKey = k,
-                value = k,
-                text = vData,
-            }
-        else
-            fixedCategories[k] = vData
+        if updateListCategoriesAtSV then
+            --List data is no table (format needed for LibAddonMenuOrderListBox widget's list)
+            if type(vData) ~= "table" then
+                fixedCategories[k] = {
+                    uniqueKey = k,
+                    value = k,
+                    text = vData,
+                }
+            else
+                fixedCategories[k] = vData
+            end
         end
+        currentAddOnCategoriesLookup[vData.text] = true
     end
 
-    if #fixedCategories > 0 then
+    if updateListCategoriesAtSV and #fixedCategories > 0 then
         AddonCategory.savedVariables.listCategory = ZO_ShallowTableCopy(fixedCategories)
     end
+    AddonCategory.currentAddOnCategoriesLookup = currentAddOnCategoriesLookup
+end
+AddonCategory.updateCurrentAddOnCategories = updateCurrentAddOnCategories
+
+local function isAddOnCategory(value)
+    updateCurrentAddOnCategories(false)
+    if ZO_IsTableEmpty(currentAddOnCategoriesLookup) then return false end
+
+    if currentAddOnCategoriesLookup[value] then return true end
+    return false
+end
+AddonCategory.isAddOnCategory = isAddOnCategory
+
+local function afterSettigs()
+    updateCurrentAddOnCategories(true)
 end
 
 local function loadSV()
@@ -170,14 +193,24 @@ end
 
 local function checkIfBaseCategory(selectedCategory, silent)
     silent = silent or false
+
+d("[AC]checkIfBaseCategory-selectedCategory: " .. tostring(selectedCategory) .. ", allowDeleteBaseCategory: " .. tostring(sV.allowDeleteBaseCategories))
+    if sV ~= nil and sV.allowDeleteBaseCategories == true then
+d("<<FALSE deletion of base category is allowed!")
+        return false
+    end
+
     for _, name in pairs(AddonCategory.baseCategories) do
+d(">>name: " .. tostring(name))
         if name == selectedCategory then
             if not silent then
                 d("[" .. MAJOR .."]You can't delete category |cFFFFFF" .. selectedCategory .. "|r.\nThis is a base category!")
             end
+d("<<<true is Base category")
             return true
         end
     end
+d("<<<false is NO Base category")
     return false
 end
 

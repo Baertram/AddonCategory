@@ -1,11 +1,11 @@
 
 ## Title: AddonCategory
 ## Author: Floliroy & Baertram
-## Version: 1.6.2
-## AddOnVersion: 010602
-## APIVersion: 101043 101044
+## Version: 1.6.3
+## AddOnVersion: 010603
+## APIVersion: 101044 101045
 ## IsLibray: False
-## DependsOn: LibAddonMenu-2.0>=37 LibAddonMenuOrderListBox>=012 LibScrollableMenu>=020302
+## DependsOn: LibAddonMenu-2.0>=37 LibAddonMenuOrderListBox>=012 LibScrollableMenu>=020303
 ## SavedVariables: AddonCategoryVariables
 
 ; This Add-on is not created by, affiliated with or sponsored by ZeniMax Media Inc. or its affiliates. 

@@ -5,9 +5,12 @@ local MAJOR = AddonCategory.name
 local LAM2 = LibAddonMenu2
 local LSM = LibScrollableMenu
 
+local baseCategories = AddonCategory.baseCategories
+
 local GetAddonCategories = AddonCategory.GetAddonCategories
 local ChangeAddonCategoryName = AddonCategory.ChangeAddonCategoryName
-
+local updateCurrentAddOnCategories = AddonCategory.updateCurrentAddOnCategories
+local isAddOnCategory = AddonCategory.isAddOnCategory
 
 local arrayLength = {}
 local addonsList = {}
@@ -75,6 +78,64 @@ local function UpdateDisabledStateOfLinkCategoryButtons()
     AddonCategory_AddonLink_button:UpdateDisabled()
 end
 
+local function addOnCategoriesAreBaseCategories()
+--d("[AC]addOnCategoriesAreBaseCategories")
+    local sV = AddonCategory.savedVariables
+    local sv_listCategories = sV.listCategory
+    local default_listCategories = AddonCategory.defaultSV.listCategory
+    if ZO_IsTableEmpty(sv_listCategories) or sv_listCategories == default_listCategories then return true end
+
+    local sameCounter = 0
+    local numEntries = #sv_listCategories
+
+    for idx, categoryData in ipairs(sv_listCategories) do
+        local defaultListCategoryData = default_listCategories[idx]
+        if ( defaultListCategoryData ~= nil and categoryData ~= nil and
+                (( defaultListCategoryData == categoryData )
+                        or ( categoryData.uniqueKey == defaultListCategoryData.uniqueKey and categoryData.value == defaultListCategoryData.value and categoryData.text == defaultListCategoryData.text ))
+        ) then
+            sameCounter = sameCounter + 1
+        --else
+--d(">>uniqueKey: " .. tostring(categoryData.uniqueKey).."/"..tostring(defaultListCategoryData.uniqueKey) .. ", text: " .. tostring(categoryData.text).."/"..tostring(defaultListCategoryData.text) ..", value: " .. tostring(categoryData.value).."/"..tostring(defaultListCategoryData.value))
+        end
+    end
+--d(">sameCounter: " ..tostring(sameCounter) .. ", numEntries: " .. tostring(numEntries))
+    return sameCounter == numEntries
+end
+
+local function resetToBaseAddOnCategories()
+    if addOnCategoriesAreBaseCategories() then return end
+    local sV = AddonCategory.savedVariables
+
+    --Detect all currently assigned addOns in the SavedVariables and remove those from any category
+    for possibleAddOnName, possibleAddOnCategoryName in pairs(sV) do
+        if type(possibleAddOnName) == "String" and type(possibleAddOnCategoryName) == "String" then
+            if isAddOnCategory(possibleAddOnCategoryName) then
+                AddonCategory.savedVariables[possibleAddOnName] = nil
+            end
+        end
+    end
+
+    --Refresh the assigned addons at the categories and reset them to the AddonCategory.addOnsAssignedToBaseCategories entries
+    baseCategories = AddonCategory.baseCategories
+    for baseCategory, addOnsAssignedToBaseCategory in pairs(AddonCategory.addOnsAssignedToBaseCategories) do
+        for _, addOnName in ipairs(addOnsAssignedToBaseCategory) do
+            local addOnBaseCategoryName = baseCategories[baseCategory]
+            if addOnBaseCategoryName ~= nil and addOnBaseCategoryName ~= "" then
+                AddonCategory.savedVariables[addOnName] = addOnBaseCategoryName
+            end
+        end
+    end
+
+    --Refresh the base categories -> Overwrite sV.listCategory with a copy of AddonCategory.defaultSV.listCategory
+    AddonCategory.savedVariables.listCategory = ZO_ShallowTableCopy(AddonCategory.defaultSV.listCategory)
+
+
+    UpdateAllChoices()
+    UpdateDisabledStateOfLinkCategoryButtons()
+    AddonCategory_Addon_dropdown:UpdateValue()
+end
+
 local firstOpenOfLAMPanel = true
 function AddonCategory.CreateSettingsWindow()
 	local panelData = {
@@ -98,6 +159,33 @@ function AddonCategory.CreateSettingsWindow()
 
 
 	local optionsData = {
+		{
+			type = "header",
+			name = "Base categories",
+		},
+        {
+            type = "checkbox",
+            name = "Allow deletion of base categories",
+            tooltip = "Enable this so you can delete the default/base categories from this addon too. Else you'll get an error message if you want to delete one of the base categories of the addon.",
+            getFunc = function() return sV.allowDeleteBaseCategories end,
+            setFunc = function(newValue)
+                sV.allowDeleteBaseCategories = newValue
+            end,
+            --disabled = function() return false end,
+			width = "full",
+        },
+        {
+            type = "button",
+            name = "Reset to base categories",
+            tooltip = "Reset all your addon categories to the base categories again and unlink the linked addons\n(except the already linked base category addons).",
+            func = function()
+                resetToBaseAddOnCategories()
+            end,
+            warning = "THIS WILL RESET YOUR AddOn CATEGORIES AND UNLINK ALL AddOns FROM YOUR CATEGORIES!\nOnly go on if you really want to do that.",
+            isDangerous = true,
+            disabled = function() return addOnCategoriesAreBaseCategories() end,
+			width = "full",
+        },
 		{
 			type = "header",
 			name = "Categories",
@@ -168,69 +256,6 @@ function AddonCategory.CreateSettingsWindow()
 			type = "header",
 			name = "Link Addon to Category",
 		},
-        --[[
-        {
-            type = "editbox",
-            name = "Create New Category",
-            tooltip = "Enter here the new category's name you want.",
-            getFunc = function() return nil end,
-            setFunc = function(newValue) 
-                if newValue ~= nil and newValue ~= "" then
-                    newCategory = newValue
-                end
-            end,
-        },
-        {
-            type = "button",
-            name = "Add Category",
-            tooltip = "Add a new category with the name you typed above.",
-            func = function()
-                if newCategory ~= nil and newCategory ~= "" then
-                    for key, value in pairs(sV.listCategory) do
-                        if value == newCategory then 
-                            d("Category's name |cFFFFFF" .. value .. "|r already present.\nUnable to add...")
-                            newCategory = nil
-                            return 
-                        end
-                    end
-
-                    table.insert(sV.listCategory, newCategory)
-                    UpdateAllChoices()
-                end
-            end,
-        },
-
-        {
-            type = "button",
-            name = "Delete Category",
-            tooltip = "Delete the selected category below.",
-            func = function()
-                if category ~= nil then
-                    for _, name in pairs(AddonCategory.baseCategories) do
-                        if name == category then
-                            d("You can't delete category |cFFFFFF" .. category .. "|r.\nThis is a base category...")
-                            return
-                        end
-                    end     
-                    for key, value in pairs(AddonCategory.listAddons) do
-                        if sV[value] == category then 
-                            d("Addons are present in the category |cFFFFFF" .. category .. "|r.\nUnable to delete...")
-                            return 
-                        end
-                    end               
-
-                    for i, v in ipairs(sV.listCategory) do
-                        if v == category then
-                            table.remove(sV.listCategory, i)
-                            break
-                        end
-                    end
-
-                    UpdateAllChoices()
-                end
-            end,
-        },
-        ]]
 
         {
             type = "dropdown",
@@ -368,76 +393,6 @@ function AddonCategory.CreateSettingsWindow()
             end,
             disabled = function() return categoryToChangeIndex == nil or categoryName == nil or categoryName == "" or newCategoryName == nil or newCategoryName == "" end,
         },
-
-        --[[
-        {
-            type = "dropdown",
-			name = "Choose Category",
-			tooltip = "Choose a category to change it order.",
-			choices = sV.listCategory,
-			default = sV.listCategory[1],
-			getFunc = function() return categoryOrder end,
-			setFunc = function(selected)
-				for index, name in ipairs(sV.listCategory) do
-					if name == selected then
-						categoryOrder = name
-                        break
-					end
-				end
-			end,
-            scrollable = true,
-			width = "half",
-            reference = "AddonCategory_CategoriesOrder_dropdown",
-        },
-        {
-            type = "dropdown",
-			name = "New Order",
-			tooltip = "Choose a new order for the selected category.",
-			choices = arrayLength,
-			default = arrayLength[1],
-			getFunc = function() return newOrder end,
-			setFunc = function(selected)
-				for index, name in ipairs(arrayLength) do
-					if name == selected then
-						newOrder = name
-                        break
-					end
-				end
-			end,
-            scrollable = true,
-			width = "half",
-            reference = "AddonCategory_NewOrder_dropdown",
-        },
-        {
-            type = "button",
-            name = "Change Order",
-            tooltip = "Change the order of the selected category to the new one.",
-            func = function()
-                if categoryOrder ~= nil and newOrder ~= nil then
-                    local oldOrder, oldCategory
-                    for key, value in pairs(sV.listCategory) do
-                        if value == categoryOrder then
-                            oldOrder = key
-                        end
-                        if key == newOrder then
-                            oldCategory = value
-                        end
-                    end
-
-                    for key, value in pairs(sV.listCategory) do
-                        if key == oldOrder then
-                            sV.listCategory[key] = oldCategory
-                        end
-                        if key == newOrder then
-                            sV.listCategory[key] = categoryOrder
-                        end
-                    end
-
-                    UpdateAllChoices()
-                end
-            end,
-        },
-        ]]
     }
 
 	LAM2:RegisterOptionControls(addonCategoryLAMPanelName, optionsData)
