@@ -119,13 +119,24 @@ local function resetToBaseAddOnCategories()
     updateCurrentAddOnCategories(false)
 
     --Detect all currently assigned addOns in the SavedVariables and remove those from any category
+    --[[
     for possibleAddOnName, possibleAddOnCategoryName in pairs(sV) do
         if not excludedSavedVars[possibleAddOnName] and type(possibleAddOnName) == "string" and type(possibleAddOnCategoryName) == "string" and isAddOnCategory(possibleAddOnCategoryName, false) == true then
             AddonCategory.savedVariables.addon2Category[possibleAddOnName] = nil
         end
     end
+    ]]
+    AddonCategory.savedVariables.addon2Category = {}
+
+    --Rebuild the default SV categories (delete the current categories table in SV first so the the rebuild works!)
+    AddonCategory.savedVariables.listCategory = {}
+    AddonCategory.BuildDefaultSavedVars() --> Will fill in AddonCategory.defaultSV.listCategory if AddonCategory.savedVariables.listCategory is empty
+
+    --Refresh the base categories -> Overwrite sV.listCategory with a copy of AddonCategory.defaultSV.listCategory
+    AddonCategory.savedVariables.listCategory = ZO_ShallowTableCopy(AddonCategory.defaultSV.listCategory)
 
     --Refresh the assigned addons at the categories and reset them to the AddonCategory.addOnsAssignedToBaseCategories entries
+    --[[
     baseCategories = AddonCategory.baseCategories
     for baseCategory, addOnsAssignedToBaseCategory in pairs(AddonCategory.addOnsAssignedToBaseCategories) do
         for _, addOnName in ipairs(addOnsAssignedToBaseCategory) do
@@ -135,9 +146,9 @@ local function resetToBaseAddOnCategories()
             end
         end
     end
-
-    --Refresh the base categories -> Overwrite sV.listCategory with a copy of AddonCategory.defaultSV.listCategory
-    AddonCategory.savedVariables.listCategory = ZO_ShallowTableCopy(AddonCategory.defaultSV.listCategory)
+    ]]
+    --Copy over the default assigned addons and their categories
+    AddonCategory.savedVariables.addon2Category = ZO_ShallowTableCopy(AddonCategory.defaultSV.addon2Category)
 
     UpdateAllChoices()
     UpdateDisabledStateOfLinkCategoryButtons()
@@ -189,7 +200,7 @@ function AddonCategory.CreateSettingsWindow()
             func = function()
                 resetToBaseAddOnCategories()
             end,
-            warning = "THIS WILL RESET YOUR AddOn CATEGORIES AND UNLINK ALL AddOns FROM YOUR CATEGORIES!\nOnly go on if you really want to do that.",
+            warning = "THIS WILL RESET YOUR AddOn CATEGORIES TO THE DEFAULTs!\nIT WILL UNLINK ALL AddOns FROM YOUR CATEGORIES TOO!",
             isDangerous = true,
             disabled = function() return addOnCategoriesAreBaseCategories() end,
 			width = "full",
@@ -307,8 +318,8 @@ function AddonCategory.CreateSettingsWindow()
         },
         {
             type = "button",
-            name = "Select Non Assigned",
-            tooltip = "Select first addon installed non assigned to a category.",
+            name = "Select non linked",
+            tooltip = "Select first addon installed non linked to a category.",
             func = function()
                 for _, v in ipairs(AddonCategory.listNonAssigned) do
                     addon = v
@@ -335,7 +346,7 @@ function AddonCategory.CreateSettingsWindow()
 
                     if l_categoryName ~= nil then
                         AddonCategory.savedVariables.addon2Category[addon] = l_categoryName
-                        d("Addon |cFFFFFF" .. addon .. "|r assigned to |cFFFFFF" .. l_categoryName .. "|r category.")
+                        d("Addon |cFFFFFF" .. addon .. "|r linked to |cFFFFFF" .. l_categoryName .. "|r category.")
 
                         for i, v in ipairs(AddonCategory.listNonAssigned) do
                             if v == addon then
