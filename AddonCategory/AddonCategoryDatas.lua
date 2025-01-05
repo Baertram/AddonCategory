@@ -313,39 +313,49 @@ AddonCategory.addOnsAssignedToBaseCategories = addOnsAssignedToBaseCategories
 --The default SavedVariables
 --======================================================================================================================
 AddonCategory.defaultSV = {
+    --LAM options
     allowDeleteBaseCategories = false,
-    ["sectionsOpen"] = {},
+
+    --Categories saved data
+    listCategory = {},          --the addon categories which have been manually created or taken from default SavedVariables
+
+    --AddOns saved data
+    addon2Category = {},        --the saved addon names and their assigned category
+
+    --AddonManager saved data
+    sectionsOpen = {},          --the currently opened categories at the AddonManager
 }
 
 function AddonCategory.BuildDefaultSavedVars()
     --Build the default SavedVariables base addon categories and the assigned addon names per base category
-    -->Moved down within the currentSVListCategory check so the addons do not fill up the SVs anymore if they got unassigned
-    --[[
-    for baseCategory, addOnsAssignedToBaseCategory in pairs(addOnsAssignedToBaseCategories) do
-        for _, addOnName in ipairs(addOnsAssignedToBaseCategory) do
-            local addOnBaseCategoryName = baseCategories[baseCategory]
-            if addOnBaseCategoryName ~= nil and addOnBaseCategoryName ~= "" then
-                AddonCategory.defaultSV[addOnName] = addOnBaseCategoryName
-            end
-        end
-    end
-    ]]
-
-    --Prepare table for LAMOrderListBoxWidget compatibility
-    AddonCategory.defaultSV.listCategory = {}
 
     --Only fill in the "defaults" if they are empty in the SavedVariables!
-    local currentSVListCategory = AddonCategoryVariables["Default"][GetDisplayName()]["$AccountWide"].listCategory
-    if ZO_IsTableEmpty(currentSVListCategory) then
-        for k, vData in ipairs(AddonCategory.baseCategoriesSorted) do
-            local addOnBaseCategoryName = vData.name
-            if addOnBaseCategoryName ~= nil and addOnBaseCategoryName ~= "" then
-                AddonCategory.defaultSV.listCategory[k] = {uniqueKey=k, text=addOnBaseCategoryName, value=k}
+    local currentSV = AddonCategoryVariables["Default"][GetDisplayName()]["$AccountWide"]
+    if currentSV ~= nil then
+        local currentSVListCategory = currentSV.listCategory
+        --local currentSVAddon2Category = currentSV.addon2Category
 
-                local addOnsAssignedToThatBaseCategory = addOnsAssignedToBaseCategories[addOnBaseCategoryName]
-                if addOnsAssignedToThatBaseCategory ~= nil then
-                    for _, addOnName in ipairs(addOnsAssignedToThatBaseCategory) do
-                        AddonCategory.defaultSV[addOnName] = addOnBaseCategoryName
+        --Default: Categories
+        ---No custom categories have been assigned yet (first run of the addon or after reset e.g.)
+        ---If the current SV's listCategory table contains any entries those either are the default categories already,
+        ---or the user changed them. We do not want to overwrite them and add default categories and/or addons anymore!
+        if ZO_IsTableEmpty(currentSVListCategory) then
+            --Loop the base categories
+            for k, vData in ipairs(AddonCategory.baseCategoriesSorted) do
+                local addOnBaseCategoryName = vData.name
+                if addOnBaseCategoryName ~= nil and addOnBaseCategoryName ~= "" then
+                    --Set the default SV's category = currently looped category
+                    -->Prepare table for LAMOrderListBoxWidget compatibility (needs a subtable per entry with keys uniqueKey, text and value)
+                    AddonCategory.defaultSV.listCategory[k] = {uniqueKey=k, text=addOnBaseCategoryName, value=k}
+
+                    --Default: AddOns assigned to categories
+                    ---If the addon category was not added to the defaults yet then add the categories' default addons to
+                    ---the default SVs now, so that the AddonManager shows them below that category
+                    local addOnsAssignedToThatBaseCategory = addOnsAssignedToBaseCategories[addOnBaseCategoryName]
+                    if addOnsAssignedToThatBaseCategory ~= nil then
+                        for _, addOnName in ipairs(addOnsAssignedToThatBaseCategory) do
+                            AddonCategory.defaultSV.addon2Category[addOnName] = addOnBaseCategoryName
+                        end
                     end
                 end
             end

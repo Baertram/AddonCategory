@@ -18,6 +18,9 @@ local addonsList = {}
 local categoryList = {}
 local categoryListIndex = {}
 
+local excludedSavedVars = AddonCategory.excludedSavedVars
+
+
 local function GetAddonsByList()
     local l_addonsList = {}
     for _, value in pairs(AddonCategory.listAddons) do
@@ -113,12 +116,12 @@ local function resetToBaseAddOnCategories()
     if addOnCategoriesAreBaseCategories() then return end
     local sV = AddonCategory.savedVariables
 
+    updateCurrentAddOnCategories(false)
+
     --Detect all currently assigned addOns in the SavedVariables and remove those from any category
     for possibleAddOnName, possibleAddOnCategoryName in pairs(sV) do
-        if type(possibleAddOnName) == "String" and type(possibleAddOnCategoryName) == "String" then
-            if isAddOnCategory(possibleAddOnCategoryName) then
-                AddonCategory.savedVariables[possibleAddOnName] = nil
-            end
+        if not excludedSavedVars[possibleAddOnName] and type(possibleAddOnName) == "string" and type(possibleAddOnCategoryName) == "string" and isAddOnCategory(possibleAddOnCategoryName, false) == true then
+            AddonCategory.savedVariables.addon2Category[possibleAddOnName] = nil
         end
     end
 
@@ -128,14 +131,13 @@ local function resetToBaseAddOnCategories()
         for _, addOnName in ipairs(addOnsAssignedToBaseCategory) do
             local addOnBaseCategoryName = baseCategories[baseCategory]
             if addOnBaseCategoryName ~= nil and addOnBaseCategoryName ~= "" then
-                AddonCategory.savedVariables[addOnName] = addOnBaseCategoryName
+                AddonCategory.savedVariables.addon2Category[addOnName] = addOnBaseCategoryName
             end
         end
     end
 
     --Refresh the base categories -> Overwrite sV.listCategory with a copy of AddonCategory.defaultSV.listCategory
     AddonCategory.savedVariables.listCategory = ZO_ShallowTableCopy(AddonCategory.defaultSV.listCategory)
-
 
     UpdateAllChoices()
     UpdateDisabledStateOfLinkCategoryButtons()
@@ -332,8 +334,8 @@ function AddonCategory.CreateSettingsWindow()
                     newCategoryName       = nil
 
                     if l_categoryName ~= nil then
-                        sV[addon] = l_categoryName
-                        d("Addon |cFFFFFF" .. addon .. "|r linked to |cFFFFFF" .. l_categoryName .. "|r category.")
+                        AddonCategory.savedVariables.addon2Category[addon] = l_categoryName
+                        d("Addon |cFFFFFF" .. addon .. "|r assigned to |cFFFFFF" .. l_categoryName .. "|r category.")
 
                         for i, v in ipairs(AddonCategory.listNonAssigned) do
                             if v == addon then

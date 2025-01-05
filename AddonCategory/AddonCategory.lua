@@ -32,38 +32,16 @@ local ac_indexCategories = AddonCategory.indexCategories
 local currentAddOnCategoriesLookup = {}
 AddonCategory.currentAddOnCategoriesLookup = currentAddOnCategoriesLookup
 
+local excludedSavedVars = {
+        ["addon2Category"] = true,
+        ["listCategory"] = true,
+        ["sectionsOpen"] = true,
+        ["allowDeleteBaseCategories"] = true,
+}
+AddonCategory.excludedSavedVars = excludedSavedVars
 
+--LibScrollableMenu default options for the context menu buttons at the AddonManager
 local defaultCustomScrollableMenuOptions = {
---> === Dropdown general customization =================================================================================
---		number visibleRowsDropdown:optional		Number or function returning number of shown entries at 1 page of the scrollable comboBox's opened dropdown
---		number visibleRowsSubmenu:optional		Number or function returning number of shown entries at 1 page of the scrollable comboBox's opened submenus
---		number maxDropdownHeight				Number or function returning number of total dropdown's maximum height
---		boolean sortEntries:optional			Boolean or function returning boolean if items in the main-/submenu should be sorted alphabetically. !!!Attention: Default is TRUE (sorting is enabled)!!!
---		table sortType:optional					table or function returning table for the sort type, e.g. ZO_SORT_BY_NAME, ZO_SORT_BY_NAME_NUMERIC
---		boolean sortOrder:optional				Boolean or function returning boolean for the sort order ZO_SORT_ORDER_UP or ZO_SORT_ORDER_DOWN
--- 		string font:optional				 	String or function returning a string: font to use for the dropdown entries
--- 		number spacing:optional,	 			Number or function returning a Number: Spacing between the entries
---		boolean disableFadeGradient:optional	Boolean or function returning a boolean: for the fading of the top/bottom scrolled rows
---		table headerColor:optional				table (ZO_ColorDef) or function returning a color table with r, g, b, a keys and their values: for header entries
---		table normalColor:optional				table (ZO_ColorDef) or function returning a color table with r, g, b, a keys and their values: for all normal (enabled) entries
---		table disabledColor:optional 			table (ZO_ColorDef) or function returning a color table with r, g, b, a keys and their values: for all disabled entries
---		boolean highlightContextMenuOpeningControl Boolean or function returning boolean if the openingControl of a context menu should be highlighted. Only works at the contextMenu options!
---												If you set this to true you also need to set data.m_highlightTemplate at the row and provide the XML template name for the highLight, e.g. "LibScrollableMenu_Highlight_Green"
--->  ===Dropdown header/title ==========================================================================================
---		string titleText:optional				String or function returning a string: Title text to show above the dropdown entries
---		string titleFont:optional				String or function returning a font string: Title text's font. Default: "ZoFontHeader3"
---		string subtitleText:optional			String or function returning a string: Sub-title text to show below the titleText and above the dropdown entries
---		string subtitleFont:optional			String or function returning a font string: Sub-Title text's font. Default: "ZoFontHeader2"
---		number titleTextAlignment:optional		Number or function returning a number: The title's vertical alignment, e.g. TEXT_ALIGN_CENTER
---		userdata customHeaderControl:optional	Userdata or function returning Userdata: A custom control thta should be shown above the dropdown entries
---		boolean headerCollapsible			 	Boolean or function returning boolean if the header control should show a collapse/expand button
--->  === Dropdown text search & filter =================================================================================
---		boolean enableFilter:optional			Boolean or function returning boolean which controls if the text search/filter editbox at the dropdown header is shown
---		function customFilterFunc				A function returning a boolean true: show item / false: hide item. Signature of function: customFilterFunc(item, filterString)
---->  === Dropdown callback functions
--- 		function preshowDropdownFn:optional 	function function(ctrl) codeHere end: to run before the dropdown shows
---->  === Dropdown's Custom XML virtual row/entry templates ============================================================
---		boolean useDefaultHighlightForSubmenuWithCallback	Boolean or function returning a boolean if always the default ZO_ComboBox highlight XML template should be used for an entry having a submenu AND a callback function. If false the highlight 'LibScrollableMenu_Highlight_Green' will be used
     enableFilter = true,
 }
 local defaultLSMSubmenuEntriesSortFunc = function(a,b)
@@ -105,7 +83,7 @@ local function updateCurrentAddOnCategories(updateListCategoriesAtSV)
     currentAddOnCategoriesLookup = {}
 
     for k, vData in ipairs(listCategories) do
-        if updateListCategoriesAtSV then
+        if updateListCategoriesAtSV == true then
             --List data is no table (format needed for LibAddonMenuOrderListBox widget's list)
             if type(vData) ~= "table" then
                 fixedCategories[k] = {
@@ -123,15 +101,18 @@ local function updateCurrentAddOnCategories(updateListCategoriesAtSV)
         currentAddOnCategoriesLookup[vData.text] = true
     end
 
-    if updateListCategoriesAtSV and #fixedCategories > 0 then
+    if updateListCategoriesAtSV == true and #fixedCategories > 0 then
         AddonCategory.savedVariables.listCategory = ZO_ShallowTableCopy(fixedCategories)
     end
     AddonCategory.currentAddOnCategoriesLookup = currentAddOnCategoriesLookup
 end
 AddonCategory.updateCurrentAddOnCategories = updateCurrentAddOnCategories
 
-local function isAddOnCategory(value)
-    updateCurrentAddOnCategories(false)
+local function isAddOnCategory(value, doCategoryUpdate)
+    doCategoryUpdate = doCategoryUpdate or false
+    if doCategoryUpdate == true then
+        updateCurrentAddOnCategories(false)
+    end
     if ZO_IsTableEmpty(currentAddOnCategoriesLookup) then return false end
 
     if currentAddOnCategoriesLookup[value] then return true end
@@ -139,8 +120,28 @@ local function isAddOnCategory(value)
 end
 AddonCategory.isAddOnCategory = isAddOnCategory
 
+
+local function migrateAddOns2CategorSavedVars()
+    --Migrate the addons which got assigned to categories from the normal SV table to the subtable SV.addon2category
+    if ZO_IsTableEmpty(sV.addon2Category) then
+        AddonCategory.savedVariables.addon2Category = AddonCategory.savedVariables.addon2Category or {}
+
+        --Loop the SVs for all directly saved addonName = categoryName entries and mobve them to the subtable addon2Category
+        for k, v in pairs(sV) do
+            if not excludedSavedVars[k] and type(k) == "string" and type(v) == "string" and isAddOnCategory(v, false) == true then
+                --Add the AddOn name to the addon2Category SV subtable
+                AddonCategory.savedVariables.addon2Category[k] = v
+                --Remove the AddOn name from direct SV table
+                AddonCategory.savedVariables[k] = nil
+            end
+        end
+    end
+end
+
 local function afterSettigs()
     updateCurrentAddOnCategories(true)
+
+    migrateAddOns2CategorSavedVars()
 end
 
 local function loadSV()
@@ -190,6 +191,8 @@ local function closeGapsInCategoryList(removedIndex)
 end
 
 local function fixUniqueKeyInCategoryList()
+    sV = AddonCategory.savedVariables
+
     -->UniqueKey could be duplicate now! So change the uniqueKey and value to their proper index
     for idx, categoryData in ipairs(sV.listCategory) do
         categoryData.uniqueKey = idx
@@ -236,8 +239,8 @@ end
 
 local callbackFuncForCountingEntriesCounter = 0
 local function callbackFuncForCountingEntries(key, value, categoryName)
-    --d(">key: ".. tostring(key) .. ", value: " ..tostring(value) .. ", counter: " .. tostring(callbackFuncForCountingEntriesCounter) .. ", categoryAtSV: " ..tostring(sV[value]) .. ", categoryName: " .. tostring(categoryName))
-    if value ~= nil and sV[value] ~= nil and sV[value] == categoryName then
+    --d(">key: ".. tostring(key) .. ", value: " ..tostring(value) .. ", counter: " .. tostring(callbackFuncForCountingEntriesCounter) .. ", categoryAtSV: " ..tostring(sV.addon2Category[value]) .. ", categoryName: " .. tostring(categoryName))
+    if value ~= nil and sV.addon2Category[value] == categoryName then
         callbackFuncForCountingEntriesCounter = callbackFuncForCountingEntriesCounter + 1
         return true
     end
@@ -245,7 +248,7 @@ local function callbackFuncForCountingEntries(key, value, categoryName)
 end
 
 local function callbackFuncCheckAddonsLeftInCategory(key, value, categoryName, silent)
-    if value ~= nil and sV[value] ~= nil and sV[value] == categoryName then
+    if value ~= nil and sV.addon2Category[value] == categoryName then
         if not silent then
             d("[" .. MAJOR .."]You can't delete this category as there are still addons assigned to this category |cFFFFFF" .. categoryName .. "|r.")
         end
@@ -356,8 +359,8 @@ function AddonCategory.AssignAddonToCategory(addonName, categoryName)
                 end
             end
 
-            if sV ~= nil and sV[addonName] == nil then
-                sV[addonName] = categoryName
+            if sV ~= nil and sV.addon2Category[addonName] == nil then
+                sV.addon2Category[addonName] = categoryName
             end
         end
     end
@@ -410,8 +413,8 @@ function AddonCategory.DeleteCategory(selectedIndex, doUnassign, callbackFunc)
         if doUnassign == true and checkIfAddonsInCategory(categoryName, true) == true then
             --Unassign the addons in the category
             for _, value in pairs(AddonCategory.listAddons) do
-                if sV[value] == categoryName then
-                    AddonCategory.savedVariables[value] = nil
+                if sV.addon2Category[value] == categoryName then
+                    AddonCategory.savedVariables.addon2Category[value] = nil
 --d(">>unassigned: " ..tostring(value))
                 end
             end
@@ -453,9 +456,9 @@ function AddonCategory.UnassignCategory(selectedIndex, callbackFunc)
         if checkIfAddonsInCategory(categoryName, true) == true then
             --Unassign the addons in the category
             for _, value in pairs(AddonCategory.listAddons) do
-                if sV[value] == categoryName then
+                if sV.addon2Category[value] == categoryName then
                     unassignedCounter = unassignedCounter + 1
-                    AddonCategory.savedVariables[value] = nil
+                    AddonCategory.savedVariables.addon2Category[value] = nil
 
                     if unassignedCounter == 1 then
                         d("[AddonCategory]Unassign AddOns of category \'" .. tostring(categoryName) .."\'")
@@ -664,8 +667,8 @@ local function ChangeAddonCategoryAddons(categoryIndex, categoryName, addonsInCa
     if not doNotRemoveExisting then
         local addonsList = AddonCategory.listAddons
         for key, value in pairs(addonsList) do
-            if sV[value] == categoryName then
-                sV[value] = nil
+            if sV.addon2Category[value] == categoryName then
+                AddonCategory.savedVariables.addon2Category[value] = nil
             end
         end
     end
@@ -673,7 +676,7 @@ local function ChangeAddonCategoryAddons(categoryIndex, categoryName, addonsInCa
     --Then re-add the passed in selected addons (checked checkboxes at the submenu)
     if newAddonsPassedIn == true then
         for key, value in pairs(addonsInCategoryTab) do
-            sV[value] = categoryName
+            AddonCategory.savedVariables.addon2Category[value] = categoryName
         end
     end
     updateAddonManagerDataIfShown()
@@ -694,8 +697,8 @@ local function AddAddonCategoryName(newCategoryName, newSortOrderIndex)
     local newIndex = numCategoryEntries + 1
     local newData = {
         uniqueKey = newIndex,
-        text = newCategoryName,
-        value = newIndex,
+        text =      newCategoryName,
+        value =     newIndex,
     }
 
     --Then check if it should be at a chosen sortIndex. Move the new entry before it
@@ -704,30 +707,38 @@ local function AddAddonCategoryName(newCategoryName, newSortOrderIndex)
         --Does the index exist already?
         local oldEntryAtIndex = listCategory[newSortOrderIndex]
         if oldEntryAtIndex ~= nil then
-            --Insert new entry at the chosen sortIndex
-            newData.uniqueKey = newSortOrderIndex
-            newData.value = newSortOrderIndex
-            --Move all following existing entries to +1
+            --Move all following (after newSortOrderIndex) existing entries to +1
             for i=newSortOrderIndex, numCategoryEntries, 1 do
-                local listCategoryDataAtIndex = listCategory[i]
-                local nextIndex = i+1
-                listCategoryDataAtIndex.uniqueKey = nextIndex
-                listCategoryDataAtIndex.value = nextIndex
+                local listCategoryDataAtIndex = AddonCategory.savedVariables.listCategory[i]
+                if listCategoryDataAtIndex ~= nil then
+                    local nextIndex = i+1
+                    listCategoryDataAtIndex.uniqueKey = nextIndex
+                    listCategoryDataAtIndex.value =     nextIndex
+                end
             end
+
+            --Insert new entry at the chosen sortIndex
+            newIndex = newSortOrderIndex
+            newData.uniqueKey = newIndex
+            newData.value =     newIndex
+            AddonCategory.savedVariables.listCategory[newIndex] = newData
+
             --Resort the whole table sV.listCategory by uniqueKey
-            table.sort(sV.listCategory, listCategoryUniqueKeyTableSort)
+            -->Shouldn't be necessary though as it was moved above already
+            table.sort(AddonCategory.savedVariables.listCategory, listCategoryUniqueKeyTableSort)
             wasAdded = true
         else
-            AddonCategory.savedVariables[newIndex] = newData
+            AddonCategory.savedVariables.listCategory[newIndex] = newData
             wasAdded = true
         end
     else
-        AddonCategory.savedVariables[newIndex] = newData
+        AddonCategory.savedVariables.listCategory[newIndex] = newData
         wasAdded = true
     end
 
     if wasAdded == true then
         --d(">added at new index: " ..tostring(newIndex))
+        fixUniqueKeyInCategoryList()
 
         --Add the new category to the addon manager's addonTypes table
         --ADD_ON_MANAGER.addonTypes[newCategoryName] = ADD_ON_MANAGER.addonTypes[newCategoryName] or {} --> Should be done automatically in BuildMasterList -> Called from updateAddonManagerDataIfShown() below
@@ -747,16 +758,16 @@ local function ChangeAddonCategoryName(categoryToChangeIndex, categoryName, newC
         local l_key = currentCategoryData.uniqueKey
         local newData = {
             uniqueKey = l_key,
-            text = newCategoryName,
-            value = l_key,
+            text =      newCategoryName,
+            value =     l_key,
         }
-        AddonCategory.savedVariables[categoryToChangeIndex] = newData
+        AddonCategory.savedVariables.listCategory[categoryToChangeIndex] = newData
 
-
+        --Update the assigned addons of the old category name -> Change it to the new category name
         local addonsList = AddonCategory.listAddons
         for _, value in pairs(addonsList) do
-            if sV[value] == categoryName then
-                sV[value] = newCategoryName
+            if sV.addon2Category[value] == categoryName then
+                AddonCategory.savedVariables.addon2Category[value] = newCategoryName
             end
         end
 
@@ -1080,7 +1091,7 @@ local function callbackEnableDisable(tabData, doEnable, l_categoryName)
         end
     else
         for key, value in pairs(AddonCategory.listAddons) do
-            if sV[value] == l_categoryName then
+            if sV.addon2Category[value] == l_categoryName then
                 AddOnManager:SetAddOnEnabled(key, doEnable)
             end
         end
@@ -1228,7 +1239,7 @@ local function callbackEdit(tabData, l_toolBar, l_categoryName)
     local assignedAddonsSubmenu = {}
     local addonsList = AddonCategory.listAddons
     for key, addonName in pairs(addonsList) do
-        if sV[addonName] == l_categoryName then
+        if sV.addon2Category[addonName] == l_categoryName then
             assignedAddonsSubmenu[#assignedAddonsSubmenu + 1] = {
                 name = addonName,
                 label = addonName,
@@ -1369,7 +1380,7 @@ local function BuildMasterList(addOnManagerObject)
         }
 
         --Check if addon was assigned to a category -> in SavedVariables
-        local savedVarsAddonsCategory = sV[name]
+        local savedVarsAddonsCategory = sV.addon2Category[name]
         if savedVarsAddonsCategory ~= nil and addOnManagerObject.addonTypes[savedVarsAddonsCategory] ~= nil then
             entryData.isCustomCategory = true
             entryData.customCategory = savedVarsAddonsCategory
@@ -1561,7 +1572,7 @@ local function SortScrollList(addOnManagerObject)
         for key, value in pairs(AddonCategory.listAddons) do
             local listCategoryNameAtIndex = listCategoryData.text
             --Even add the category to the output list if it is empty so one can use it's toolbar context menu toa ssign addons
-            --if sV[value] == listCategoryNameAtIndex then
+            --if sV.addon2Category[value] == listCategoryNameAtIndex then
                 addOnManagerObject:AddAddonTypeSection(listCategoryNameAtIndex, listCategoryNameAtIndex)
                 break
             --end
