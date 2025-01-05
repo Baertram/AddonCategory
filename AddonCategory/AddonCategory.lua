@@ -94,6 +94,7 @@ local function updateAddonManagerDataIfShown()
 end
 
 local function updateCurrentAddOnCategories(updateListCategoriesAtSV)
+--d("[AddonCategory]updateCurrentAddOnCategories-updateListCategoriesAtSV: " ..tostring(updateListCategoriesAtSV))
     if sV == nil then return end
     updateListCategoriesAtSV = updateListCategoriesAtSV or false
 
@@ -112,10 +113,13 @@ local function updateCurrentAddOnCategories(updateListCategoriesAtSV)
                     value = k,
                     text = vData,
                 }
+--d(">k: " ..tostring(k) .. ", name: " ..tostring(vData))
             else
                 fixedCategories[k] = vData
+--d(">k: " ..tostring(k) .. ", name: " ..tostring(vData.text))
             end
         end
+
         currentAddOnCategoriesLookup[vData.text] = true
     end
 
@@ -140,9 +144,13 @@ local function afterSettigs()
 end
 
 local function loadSV()
+    AddonCategory.BuildDefaultSavedVars()
+
     --Saved Variables
     AddonCategory.savedVariables = ZO_SavedVars:NewAccountWide("AddonCategoryVariables", 1, nil, AddonCategory.defaultSV)
     sV = AddonCategory.savedVariables
+
+    --AddonCategory._debugSV = ZO_ShallowTableCopy(AddonCategory.savedVariables.listCategory)
 
     --Check if SV table structure of categories is already properly updated for LibAddonMenuOrderListBox widget's listtype
     afterSettigs()
@@ -177,7 +185,7 @@ local function closeGapsInCategoryList(removedIndex)
         end
     end
     if not ZO_IsTableEmpty(newOrderedTab) then
-        sV.listCategory = newOrderedTab
+        AddonCategory.savedVariables.listCategory = newOrderedTab
     end
 end
 
@@ -191,64 +199,120 @@ local function fixUniqueKeyInCategoryList()
     end
 end
 
+local function checkIfTableOrCategoryName(category)
+    local tc = type(category)
+    if tc == "table" then
+        return category.text
+    elseif tc == "string" then
+        return category
+    end
+    return nil
+end
+
 local function checkIfBaseCategory(selectedCategory, silent)
     silent = silent or false
+    local selectedCategoryName = checkIfTableOrCategoryName(selectedCategory)
+    if selectedCategoryName ~= nil then
+--d("[AC]checkIfBaseCategory-selectedCategory: " .. tostring(selectedCategoryName) .. ", allowDeleteBaseCategory: " .. tostring(sV.allowDeleteBaseCategories))
+        if sV ~= nil and sV.allowDeleteBaseCategories == true then
+--d("<<FALSE deletion of base category is allowed!")
+            return false
+        end
 
-d("[AC]checkIfBaseCategory-selectedCategory: " .. tostring(selectedCategory) .. ", allowDeleteBaseCategory: " .. tostring(sV.allowDeleteBaseCategories))
-    if sV ~= nil and sV.allowDeleteBaseCategories == true then
-d("<<FALSE deletion of base category is allowed!")
-        return false
-    end
-
-    for _, name in pairs(AddonCategory.baseCategories) do
-d(">>name: " .. tostring(name))
-        if name == selectedCategory then
-            if not silent then
-                d("[" .. MAJOR .."]You can't delete category |cFFFFFF" .. selectedCategory .. "|r.\nThis is a base category!")
+        for _, name in pairs(AddonCategory.baseCategories) do
+--d(">>name: " .. tostring(name))
+            if name == selectedCategoryName then
+                if not silent then
+                    d("[" .. MAJOR .."]You can't delete the category |cFFFFFF" .. selectedCategoryName .. "|r.\nThis is a base category!")
+                end
+--d("<<<true is Base category")
+                return true
             end
-d("<<<true is Base category")
-            return true
         end
     end
-d("<<<false is NO Base category")
+--d("<<<false is NO Base category")
     return false
 end
 
-local function checkIfAddonsInCategory(selectedCategory, silent)
-    silent = silent or false
-    for _, value in pairs(AddonCategory.listAddons) do
-        if sV[value] == selectedCategory then
-            if not silent then
-                d("[" .. MAJOR .."]You can't delete category as there are still addons present in this category |cFFFFFF" .. selectedCategory .. "|r.")
-            end
-            return true
+local callbackFuncForCountingEntriesCounter = 0
+local function callbackFuncForCountingEntries(key, value, categoryName)
+    --d(">key: ".. tostring(key) .. ", value: " ..tostring(value) .. ", counter: " .. tostring(callbackFuncForCountingEntriesCounter) .. ", categoryAtSV: " ..tostring(sV[value]) .. ", categoryName: " .. tostring(categoryName))
+    if value ~= nil and sV[value] ~= nil and sV[value] == categoryName then
+        callbackFuncForCountingEntriesCounter = callbackFuncForCountingEntriesCounter + 1
+        return true
+    end
+    return false
+end
+
+local function callbackFuncCheckAddonsLeftInCategory(key, value, categoryName, silent)
+    if value ~= nil and sV[value] ~= nil and sV[value] == categoryName then
+        if not silent then
+            d("[" .. MAJOR .."]You can't delete this category as there are still addons assigned to this category |cFFFFFF" .. categoryName .. "|r.")
         end
+        return true
+    end
+    return false
+end
+
+local function callbackFuncCheckDuplicateAddonsInCategory(key, value, newCategoryName)
+    if value ~= nil and value.text ~= nil and value.text == newCategoryName then
+        d("["..MAJOR.."]Error - Duplicate category's name |cFFFFFF" .. newCategoryName .. "|r ...")
+        newCategoryName = nil
+        return true
+    end
+    return false
+end
+
+
+local function loopAddOnsTabAndRunCallback(addonsTab, callbackFunc, abortAfterFirstFound, ...)
+--d(">loopAddOnsTabAndRunCallback")
+    if not ZO_IsTableEmpty(addonsTab) and type(callbackFunc) == "function" then
+--d(">>looping table")
+        local retVar = false
+        for key, value in pairs(addonsTab) do
+            local retVarLoop = callbackFunc(key, value, ...)
+            if not retVar and retVarLoop == true then
+                retVar = true
+            end
+            if retVar == true and abortAfterFirstFound == true then return retVar end
+        end
+        return retVar
     end
     return false
 end
 
 function AddonCategory.GetNumAddonsInCategory(categoryName, isUnassignedAddons)
     isUnassignedAddons = isUnassignedAddons or false
-    local counter = 0
     local addonsTabToCheck = (isUnassignedAddons == true and AddonCategory.listNonAssigned) or AddonCategory.listAddons
-
-    for _, value in pairs(addonsTabToCheck) do
-        if sV[value] == categoryName then
-            counter = counter + 1
-        end
-    end
-    return counter
+--d("[AddonCategory]GetNumAddonsInCategory-category: " .. tostring(categoryName))
+    callbackFuncForCountingEntriesCounter = 0
+    loopAddOnsTabAndRunCallback(addonsTabToCheck, callbackFuncForCountingEntries, false, categoryName)
+    return callbackFuncForCountingEntriesCounter
 end
 local getNumAddonsInCategory = AddonCategory.GetNumAddonsInCategory
 
+local function checkIfAddonsInCategory(selectedCategory, silent)
+    silent = silent or false
+    local selectedCategoryName = checkIfTableOrCategoryName(selectedCategory)
+    if selectedCategoryName ~= nil then
+        return loopAddOnsTabAndRunCallback(AddonCategory.listAddons, callbackFuncCheckAddonsLeftInCategory, true, selectedCategoryName, silent)
+    end
+    return false
+end
+AddonCategory.CheckIfAddonsInCategory = checkIfAddonsInCategory
+
 function AddonCategory.GetAddonCategories(returnIndexTable, returnIndexLookupTable)
+--d("[AddonCategory]GetAddonCategories-returnIndexTable: " .. tostring(returnIndexTable) .. ", returnIndexLookupTable: " ..tostring(returnIndexLookupTable))
     if doesSVExistYet("listCategory") == false then return end
+    sV = AddonCategory.savedVariables
 
     returnIndexTable = returnIndexTable or false
     returnIndexLookupTable = returnIndexLookupTable or false
     local tableToReturn = {}
 
+
     for idx, data in ipairs(sV.listCategory) do
+--d(">idx: " .. tostring(idx) .. ", name: " ..tostring(data.text))
         if returnIndexLookupTable == true then
             tableToReturn[data.text] = idx
         else
@@ -310,63 +374,114 @@ local function checkForDuplicateCategory(newCategoryName, wasSVChecked)
     wasSVChecked = wasSVChecked or false
     if not wasSVChecked and doesSVExistYet("listCategory") == false then return end
 
-    for _, l_data in ipairs(sV.listCategory) do
-        if l_data.text == newCategoryName then
-            d("["..MAJOR.."]Error - Duplicate category's name |cFFFFFF" .. newCategoryName .. "|r ...")
-            newCategoryName = nil
-            return true
-        end
-    end
-    return false
+    return loopAddOnsTabAndRunCallback(AddonCategory.listAddons, callbackFuncCheckDuplicateAddonsInCategory, true, newCategoryName)
 end
 AddonCategory.CheckForDuplicateCategory = checkForDuplicateCategory
 
-function AddonCategory.DeleteCategoryCheckFunction(selectedIndex)
+function AddonCategory.DeleteCategoryCheckFunction(selectedIndex, silent)
+--d("[AddonCategory]DeleteCategoryCheckFunction-selectedIndex: " ..tostring(selectedIndex))
     if doesSVExistYet("listCategory") == false then return end
     if selectedIndex == nil then return false end
     local selectedCategory = sV.listCategory[selectedIndex]
     if selectedCategory ~= nil then
-        if checkIfBaseCategory(selectedCategory, false) == true then return false end
-        if checkIfAddonsInCategory(selectedCategory, false) == true then return false end
+        if checkIfBaseCategory(selectedCategory, silent) == true then return false end
+        if checkIfAddonsInCategory(selectedCategory, silent) == true then return false end
+--d(">true")
         return true
     end
+--d(">false")
     return false
 end
 --local DeleteCategoryCheckFunction = AddonCategory.DeleteCategoryCheckFunction
 
-function AddonCategory.DeleteCategory(selectedIndex, doUnassign)
+function AddonCategory.DeleteCategory(selectedIndex, doUnassign, callbackFunc)
+--d("[AddonCategory]DeleteCategory-selectedIndex: " ..tostring(selectedIndex) .. ", doUnassign: " ..tostring(doUnassign) .. "; callbackFunc: " ..tostring(callbackFunc))
     if selectedIndex == nil then return false end
 
     local selectedCategory = sV.listCategory[selectedIndex]
     if selectedCategory ~= nil then
-        if checkIfBaseCategory(selectedCategory, false) == true then return end
         local categoryName = selectedCategory.text
         if categoryName == nil or categoryName == "" then return false end
+--d(">categoryName: " ..tostring(categoryName))
+        if checkIfBaseCategory(categoryName, false) == true then return end
 
         doUnassign = doUnassign or false
         --Are there still addons assinged to the category? Unassign them now?
-        if doUnassign == true and checkIfAddonsInCategory(selectedCategory, true) == true then
+        if doUnassign == true and checkIfAddonsInCategory(categoryName, true) == true then
             --Unassign the addons in the category
             for _, value in pairs(AddonCategory.listAddons) do
                 if sV[value] == categoryName then
-                    sV[value] = nil
+                    AddonCategory.savedVariables[value] = nil
+--d(">>unassigned: " ..tostring(value))
                 end
             end
         end
         --Delete the category now -> Might create a gap in the table index and entry's uniqueKey now!
-        sV.listCategory[selectedIndex] = nil
-        ac_indexCategories[categoryName] = nil
+        AddonCategory.savedVariables.listCategory[selectedIndex] = nil
+        AddonCategory.indexCategories[categoryName] = nil
 
         --Loop the category tables and close "gaps" and fix "uniqueKey" and "value"
         closeGapsInCategoryList(selectedIndex)
         fixUniqueKeyInCategoryList()
 
+        AddonCategory.savedVariables.sectionsOpen[categoryName] = nil
+
         updateAddonManagerDataIfShown()
+
+        if type(callbackFunc) == "function" then
+            callbackFunc(selectedIndex, doUnassign)
+        end
+--d("<return TRUE")
         return true
     end
     return false
 end
 local DeleteCategory = AddonCategory.DeleteCategory
+
+function AddonCategory.UnassignCategory(selectedIndex, callbackFunc)
+    if selectedIndex == nil then return false end
+
+    local selectedCategory = sV.listCategory[selectedIndex]
+    if selectedCategory ~= nil then
+        local categoryName = selectedCategory.text
+        if categoryName == nil or categoryName == "" then return false end
+--d(">categoryName: " ..tostring(categoryName))
+
+        local unassignedCounter = 0
+
+        --Are there still addons assinged to the category? Unassign them now?
+        if checkIfAddonsInCategory(categoryName, true) == true then
+            --Unassign the addons in the category
+            for _, value in pairs(AddonCategory.listAddons) do
+                if sV[value] == categoryName then
+                    unassignedCounter = unassignedCounter + 1
+                    AddonCategory.savedVariables[value] = nil
+
+                    if unassignedCounter == 1 then
+                        d("[AddonCategory]Unassign AddOns of category \'" .. tostring(categoryName) .."\'")
+                    end
+                    d(">unassigned: " ..tostring(value))
+                end
+            end
+        else
+            d("[AddonCategory]No AddOns to unassign found in category \'" .. tostring(categoryName) .. "\'")
+        end
+
+        if unassignedCounter > 1 then
+            AddonCategory.savedVariables.sectionsOpen[categoryName] = nil
+
+            updateAddonManagerDataIfShown()
+
+            if type(callbackFunc) == "function" then
+                callbackFunc(selectedIndex)
+            end
+        --d("<return TRUE")
+            return true
+        end
+    end
+    return false
+end
+local UnassignCategory = AddonCategory.UnassignCategory
 
 local function moveListCategory(selectedIndex, newPos, moveToFirstOrLast)
     local numEntries = #sV.listCategory
@@ -603,11 +718,11 @@ local function AddAddonCategoryName(newCategoryName, newSortOrderIndex)
             table.sort(sV.listCategory, listCategoryUniqueKeyTableSort)
             wasAdded = true
         else
-            sV.listCategory[newIndex] = newData
+            AddonCategory.savedVariables[newIndex] = newData
             wasAdded = true
         end
     else
-        sV.listCategory[newIndex] = newData
+        AddonCategory.savedVariables[newIndex] = newData
         wasAdded = true
     end
 
@@ -635,7 +750,7 @@ local function ChangeAddonCategoryName(categoryToChangeIndex, categoryName, newC
             text = newCategoryName,
             value = l_key,
         }
-        sV.listCategory[categoryToChangeIndex] = newData
+        AddonCategory.savedVariables[categoryToChangeIndex] = newData
 
 
         local addonsList = AddonCategory.listAddons
@@ -769,17 +884,22 @@ local function showChangeAddonCategoryNameDialog(categoryToChangeIndex, category
     ZO_Dialogs_ShowPlatformDialog("ADDONCATEGORY_CHANGE_CATEGORY_NAME_DIALOG", { categoryToChangeIndex = categoryToChangeIndex, categoryName = categoryName })
 end
 
-local function showDeleteAddonCategoryDialog(categoryToChangeIndex, categoryName)
+local function showDeleteAddonCategoryDialog(categoryToChangeIndex, categoryName, unassignAddOns, callbackFunc)
+    unassignAddOns = unassignAddOns or false
     if ESO_Dialogs["ADDONCATEGORY_DELETE_CATEGORY_DIALOG"] == nil then
         ESO_Dialogs["ADDONCATEGORY_DELETE_CATEGORY_DIALOG"] =
         {
             title =
             {
-                text = "Delete category \'"..categoryName.."\'",
+                text = function(dialog)
+                    return "Delete category \'"..dialog.data.categoryName.."\'"
+                end,
             },
             mainText =
             {
-                text = "Assigned AddOns will be unassigned.\nDo you want to delete the category now?",
+                text = function(dialog)
+                    return (dialog.data.unassignAddOns == true and "Assigned AddOns will be unassigned.\nDo you want to delete the category now?") or "Do you want to delete the category now?"
+                end,
             },
             noChoiceCallback =  function()
 
@@ -788,9 +908,9 @@ local function showDeleteAddonCategoryDialog(categoryToChangeIndex, categoryName
             {
                 {
                     --requiresTextInput = true,
-                    text =      "Delete",
-                    callback =  function(dialog)
-                        DeleteCategory(dialog.data.categoryToChangeIndex, true)
+                    text = "Delete",
+                    callback = function(dialog)
+                        DeleteCategory(dialog.data.categoryToChangeIndex, dialog.data.unassignAddOns, dialog.data.callbackFunc)
                     end,
                 },
                 {
@@ -802,8 +922,50 @@ local function showDeleteAddonCategoryDialog(categoryToChangeIndex, categoryName
         }
     end
 --d(">categoryToChangeIndex: " .. tostring(categoryToChangeIndex) .. ", categoryName: " .. tostring(categoryName))
-    ZO_Dialogs_ShowPlatformDialog("ADDONCATEGORY_DELETE_CATEGORY_DIALOG", { categoryToChangeIndex = categoryToChangeIndex, categoryName = categoryName })
+    ZO_Dialogs_ShowPlatformDialog("ADDONCATEGORY_DELETE_CATEGORY_DIALOG", { categoryToChangeIndex = categoryToChangeIndex, categoryName = categoryName, unassignAddOns = unassignAddOns, callbackFunc = callbackFunc })
 end
+AddonCategory.ShowDeleteAddonCategoryDialog = showDeleteAddonCategoryDialog
+
+local function showUnassignAddonCategoryDialog(categoryToChangeIndex, categoryName, callbackFunc)
+    if ESO_Dialogs["ADDONCATEGORY_UNASSIGN_CATEGORY_DIALOG"] == nil then
+        ESO_Dialogs["ADDONCATEGORY_UNASSIGN_CATEGORY_DIALOG"] =
+        {
+            title =
+            {
+                text = function(dialog)
+                    return "Unassign category \'"..dialog.data.categoryName.."\'"
+                end,
+            },
+            mainText =
+            {
+                text = function(dialog)
+                    return "Assigned AddOns will be unassigned.\nDo you want to do that now?"
+                end,
+            },
+            noChoiceCallback =  function()
+
+            end,
+            buttons =
+            {
+                {
+                    --requiresTextInput = true,
+                    text = "Unassign",
+                    callback = function(dialog)
+                        UnassignCategory(dialog.data.categoryToChangeIndex, dialog.data.callbackFunc)
+                    end,
+                },
+                {
+                    text = SI_DIALOG_CANCEL,
+                    callback = function(dialog)
+                    end,
+                }
+            }
+        }
+    end
+--d(">categoryToChangeIndex: " .. tostring(categoryToChangeIndex) .. ", categoryName: " .. tostring(categoryName))
+    ZO_Dialogs_ShowPlatformDialog("ADDONCATEGORY_UNASSIGN_CATEGORY_DIALOG", { categoryToChangeIndex = categoryToChangeIndex, categoryName = categoryName, callbackFunc = callbackFunc })
+end
+AddonCategory.ShowUnassignAddonCategoryDialog = showUnassignAddonCategoryDialog
 
 local submenuSaveButtons = {}
 local function updateLSMAssignAddOnsSubmenuSaveButtonEnabledState(p_comboBox, newEnabledState)
@@ -1041,7 +1203,7 @@ local function callbackEdit(tabData, l_toolBar, l_categoryName)
 
         if checkIfBaseCategory(l_categoryName, true) == false then
             AddCustomScrollableMenuEntry("Delete category", function()
-                showDeleteAddonCategoryDialog(catIndex, catName)
+                showDeleteAddonCategoryDialog(catIndex, catName, true)
             end)
         end
 

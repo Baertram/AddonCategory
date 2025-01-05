@@ -11,6 +11,7 @@ local GetAddonCategories = AddonCategory.GetAddonCategories
 local ChangeAddonCategoryName = AddonCategory.ChangeAddonCategoryName
 local updateCurrentAddOnCategories = AddonCategory.updateCurrentAddOnCategories
 local isAddOnCategory = AddonCategory.isAddOnCategory
+local checkIfAddonsInCategory = AddonCategory.CheckIfAddonsInCategory
 
 local arrayLength = {}
 local addonsList = {}
@@ -76,6 +77,7 @@ end
 local function UpdateDisabledStateOfLinkCategoryButtons()
     AddonCategory_AddonNonAssigned_button:UpdateDisabled()
     AddonCategory_AddonLink_button:UpdateDisabled()
+    AddonCategory_CategoryUnlink_button:UpdateDisabled()
 end
 
 local function addOnCategoriesAreBaseCategories()
@@ -95,8 +97,12 @@ local function addOnCategoriesAreBaseCategories()
                         or ( categoryData.uniqueKey == defaultListCategoryData.uniqueKey and categoryData.value == defaultListCategoryData.value and categoryData.text == defaultListCategoryData.text ))
         ) then
             sameCounter = sameCounter + 1
-        --else
---d(">>uniqueKey: " .. tostring(categoryData.uniqueKey).."/"..tostring(defaultListCategoryData.uniqueKey) .. ", text: " .. tostring(categoryData.text).."/"..tostring(defaultListCategoryData.text) ..", value: " .. tostring(categoryData.value).."/"..tostring(defaultListCategoryData.value))
+--[[
+        else
+            if defaultListCategoryData ~= nil then
+d(">>uniqueKey: " .. tostring(categoryData.uniqueKey).."/"..tostring(defaultListCategoryData.uniqueKey) .. ", text: " .. tostring(categoryData.text).."/"..tostring(defaultListCategoryData.text) ..", value: " .. tostring(categoryData.value).."/"..tostring(defaultListCategoryData.value))
+            end
+]]
         end
     end
 --d(">sameCounter: " ..tostring(sameCounter) .. ", numEntries: " .. tostring(numEntries))
@@ -194,10 +200,10 @@ function AddonCategory.CreateSettingsWindow()
             type    = "orderlistbox",
             name    = "Categories - Add/Remove/Order",
             tooltip = "Add, remove and change the order of the addon categories",
-            listEntries = sV.listCategory,
-            getFunc = function() return sV.listCategory end,
+            listEntries = AddonCategory.savedVariables.listCategory,
+            getFunc = function() return AddonCategory.savedVariables.listCategory end,
             setFunc = function(orderedList)
-                sV.listCategory = orderedList
+                AddonCategory.savedVariables.listCategory = orderedList
             end,
             minHeight = 100,
             maxHeight = 300,
@@ -221,13 +227,16 @@ function AddonCategory.CreateSettingsWindow()
             showRemoveEntryButton = true,
             askBeforeRemoveEntry = function() return true end,
             removeEntryCheckFunction = function(orderListBox, selectedIndex, orderListBoxData)
-                return AddonCategory.DeleteCategoryCheckFunction(selectedIndex)
+                return AddonCategory.DeleteCategoryCheckFunction(selectedIndex, false)
             end,
             removeEntryCallbackFunction = function(orderListBox, selectedEntry, orderListBoxData)
                 if selectedEntry == nil then return false end
                 --local selectedEntryIndex = selectedEntry.uniqueKey
                 local selectedEntryCategoryName = selectedEntry.text
-                AddonCategory.indexCategories[selectedEntryCategoryName] = nil
+                AddonCategory.savedVariables.sectionsOpen[selectedEntryCategoryName] = nil
+                if AddonCategory.indexCategories then
+                    AddonCategory.indexCategories[selectedEntryCategoryName] = nil
+                end
 
                 categoryIndex         = nil
                 categoryToChangeIndex = nil
@@ -249,13 +258,31 @@ function AddonCategory.CreateSettingsWindow()
                 UpdateAllChoices()
                 UpdateDisabledStateOfLinkCategoryButtons()
             end,
+            reference = "AddonCategory_Categories_OrderListBox",
         },
 
 
 		{
 			type = "header",
-			name = "Link Addon to Category",
+			name = "Link AddOns to Category",
 		},
+
+        {
+            type = "dropdown",
+            name = "List Categories",
+            tooltip = "List of the categories of addons you have.",
+            choices = categoryList,
+            choicesValues = categoryListIndex,
+            default = 1,
+            getFunc = function() return categoryIndex end,
+            setFunc = function(selectedIndex)
+                categoryIndex = selectedIndex
+                categoryToChangeIndex = nil
+            end,
+            scrollable = true,
+            width = "half",
+            reference = "AddonCategory_Categories_dropdown",
+        },
 
         {
             type = "dropdown",
@@ -275,22 +302,6 @@ function AddonCategory.CreateSettingsWindow()
             scrollable = true,
             width = "half",
             reference = "AddonCategory_Addon_dropdown",
-        },
-        {
-            type = "dropdown",
-            name = "List Categories",
-            tooltip = "List of the categories of addons you have.",
-            choices = categoryList,
-            choicesValues = categoryListIndex,
-            default = 1,
-            getFunc = function() return categoryIndex end,
-            setFunc = function(selectedIndex)
-                categoryIndex = selectedIndex
-                categoryToChangeIndex = nil
-            end,
-            scrollable = true,
-            width = "half",
-            reference = "AddonCategory_Categories_dropdown",
         },
         {
             type = "button",
@@ -340,6 +351,61 @@ function AddonCategory.CreateSettingsWindow()
             disabled = function() return addon == nil or categoryIndex == nil end,
             reference = "AddonCategory_AddonLink_button"
         },
+        {
+            type = "button",
+            name = "Reset selections",
+            tooltip = "Reset all selected dropdowns in this section",
+            func = function()
+                addon                 = nil
+                categoryIndex         = nil
+                categoryToChangeIndex = nil
+                categoryName          = nil
+                newCategoryName       = nil
+                AddonCategory_Addon_dropdown:UpdateValue()
+            end,
+            disabled = function() return addon == nil and categoryIndex == nil end,
+            reference = "AddonCategory_AddonLinkResetAll_button"
+        },
+
+		{
+			type = "header",
+			name = "Unlink Addons from Category",
+		},
+		{
+			type = "description",
+			text = "Select a category at the \'List Categories\' dropdown above. You can only unassign all AddOns in that category here!\nIf you want to unlink single AddOns from the categories please visit the AddOn Manager and use the context-menu buttons directly at the category headlines.",
+		},
+        {
+            type = "button",
+            name = "Unlink category",
+            tooltip = "Unlink the selected category from all AddOns.",
+            func = function()
+                local l_categoryName = sV.listCategory[categoryIndex].text
+                AddonCategory.ShowUnassignAddonCategoryDialog(categoryIndex, l_categoryName, function(selectedIndex)
+                    addon                 = nil
+                    categoryIndex         = nil
+                    categoryToChangeIndex = nil
+                    categoryName          = nil
+                    newCategoryName       = nil
+
+                    UpdateAllChoices()
+                    AddonCategory_Categories_OrderListBox:UpdateValue()
+
+                    if AddonCategory.indexCategories then AddonCategory.indexCategories[l_categoryName] = nil end
+                    --AddonCategory._debugSV_OLD = ZO_ShallowTableCopy(AddonCategory.savedVariables.listCategory)
+                    UpdateDisabledStateOfLinkCategoryButtons()
+                end)
+            end,
+            disabled = function()
+                if categoryIndex == nil then return true end
+                local l_categoryName = sV.listCategory[categoryIndex].text
+                if l_categoryName ~= nil and checkIfAddonsInCategory(l_categoryName, true) == false then return true end
+                return false
+            end,
+			width = "half",
+            reference = "AddonCategory_CategoryUnlink_button",
+        },
+
 		{
 			type = "header",
 			name = "Edit Categories",
@@ -369,7 +435,7 @@ function AddonCategory.CreateSettingsWindow()
             getFunc = function() return nil end,
             setFunc = function(newValue)
                 newCategoryName = nil
-                if newValue ~= nil and newValue ~= "" then
+                if newValue ~= nil and newValue ~= "" and categoryName ~= nil and categoryName ~= "" and newValue ~= categoryName then
                     newCategoryName = newValue
                 end
             end,
