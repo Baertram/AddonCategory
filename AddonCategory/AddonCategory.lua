@@ -33,6 +33,9 @@ local currentAddOnCategoriesLookup = {}
 AddonCategory.currentAddOnCategoriesLookup = currentAddOnCategoriesLookup
 
 local excludedSavedVars = {
+        ["default"] = true,
+        ["GetInterfaceForCharacter"] = true,
+        ["ResetToDefaults"] = true,
         ["addon2Category"] = true,
         ["listCategory"] = true,
         ["sectionsOpen"] = true,
@@ -115,30 +118,37 @@ local function isAddOnCategory(value, doCategoryUpdate)
     end
     if ZO_IsTableEmpty(currentAddOnCategoriesLookup) then return false end
 
-    if currentAddOnCategoriesLookup[value] then return true end
+    if currentAddOnCategoriesLookup[value] == true then return true end
     return false
 end
 AddonCategory.isAddOnCategory = isAddOnCategory
 
 
 local function migrateAddOns2CategorSavedVars()
+--d("[AddonCategory]migrateAddOns2CategorSavedVars")
+    AddonCategory.savedVariables.addon2Category = AddonCategory.savedVariables.addon2Category or {}
+
+    local currentSV = AddonCategoryVariables["Default"][GetDisplayName()]["$AccountWide"]
     --Migrate the addons which got assigned to categories from the normal SV table to the subtable SV.addon2category
-    if ZO_IsTableEmpty(sV.addon2Category) then
-        AddonCategory.savedVariables.addon2Category = AddonCategory.savedVariables.addon2Category or {}
+    if ZO_IsTableEmpty(currentSV.addon2Category) then
 
         --Loop the SVs for all directly saved addonName = categoryName entries and mobve them to the subtable addon2Category
-        for k, v in pairs(sV) do
+        for k, v in pairs(currentSV) do
+--d(">k: " ..tostring(k) .. ", v: "..tostring(v) .. ", isAddOnCategory: " .. tostring(isAddOnCategory(v, false)))
             if not excludedSavedVars[k] and type(k) == "string" and type(v) == "string" and isAddOnCategory(v, false) == true then
                 --Add the AddOn name to the addon2Category SV subtable
                 AddonCategory.savedVariables.addon2Category[k] = v
                 --Remove the AddOn name from direct SV table
-                AddonCategory.savedVariables[k] = nil
+                currentSV[k] = nil
+                --AddonCategory.savedVariables[k] = nil
             end
         end
     end
+    sV = AddonCategory.savedVariables
 end
 
 local function afterSettigs()
+    --Build AddOn category lookup table
     updateCurrentAddOnCategories(true)
 
     migrateAddOns2CategorSavedVars()
@@ -148,10 +158,8 @@ local function loadSV()
     AddonCategory.BuildDefaultSavedVars()
 
     --Saved Variables
-    AddonCategory.savedVariables = ZO_SavedVars:NewAccountWide("AddonCategoryVariables", 1, nil, AddonCategory.defaultSV)
+    AddonCategory.savedVariables = ZO_SavedVars:NewAccountWide("AddonCategoryVariables", 1, nil, AddonCategory.defaultSV, nil --[[ GetWorldName() ]], nil --[[ "AllAccountsTheSame" ]])
     sV = AddonCategory.savedVariables
-
-    --AddonCategory._debugSV = ZO_ShallowTableCopy(AddonCategory.savedVariables.listCategory)
 
     --Check if SV table structure of categories is already properly updated for LibAddonMenuOrderListBox widget's listtype
     afterSettigs()
@@ -159,7 +167,7 @@ end
 
 
 local function doesSVExistYet(svSubTableName)
-    sV = sV or AddonCategory.savedVariables
+    sV = AddonCategory.savedVariables
     if sV == nil then return false end
 
     if type(svSubTableName) == "string" then
@@ -307,7 +315,6 @@ AddonCategory.CheckIfAddonsInCategory = checkIfAddonsInCategory
 function AddonCategory.GetAddonCategories(returnIndexTable, returnIndexLookupTable)
 --d("[AddonCategory]GetAddonCategories-returnIndexTable: " .. tostring(returnIndexTable) .. ", returnIndexLookupTable: " ..tostring(returnIndexLookupTable))
     if doesSVExistYet("listCategory") == false then return end
-    sV = AddonCategory.savedVariables
 
     returnIndexTable = returnIndexTable or false
     returnIndexLookupTable = returnIndexLookupTable or false
@@ -326,12 +333,13 @@ function AddonCategory.GetAddonCategories(returnIndexTable, returnIndexLookupTab
             end
         end
     end
+--d(">tableToReturn: " .. NonContiguousCount(tableToReturn))
     return tableToReturn
 end
 local GetAddonCategories = AddonCategory.GetAddonCategories
 
 function AddonCategory.IsCustomAddonCategory(addonType)
-    local customCategories = GetAddonCategories(false)
+    local customCategories = GetAddonCategories(false, nil)
     if ZO_IsTableEmpty(customCategories) then return false end
 
     for _, value in pairs(customCategories) do
@@ -1218,20 +1226,22 @@ local function callbackEdit(tabData, l_toolBar, l_categoryName)
             end)
         end
 
-        local addonCategoriesOrderSubmenu = {}
-        for pos, listcategoryData in ipairs(listCategory) do
-            local positionText = "Set as position #" .. tostring(pos) .. " (current: \'" .. tostring(listcategoryData.text) .. "\')"
-            addonCategoriesOrderSubmenu[#addonCategoriesOrderSubmenu + 1] = {
-                name = positionText,
-                label = positionText,
-                callback = function(comboBox, itemName, item)
-                    MoveAddonCategory(catIndex, catName, pos)
-                end,
-                --entryType = LSM_ENTRY_TYPE_NORMAL,
-            }
-        end
-        if not ZO_IsTableEmpty(addonCategoriesOrderSubmenu) then
-            AddCustomScrollableSubMenuEntry("Order addon category", addonCategoriesOrderSubmenu)
+        if #listCategory > 1 then
+            local addonCategoriesOrderSubmenu = {}
+            for pos, listcategoryData in ipairs(listCategory) do
+                local positionText = "Set as position #" .. tostring(pos) .. " (current: \'" .. tostring(listcategoryData.text) .. "\')"
+                addonCategoriesOrderSubmenu[#addonCategoriesOrderSubmenu + 1] = {
+                    name = positionText,
+                    label = positionText,
+                    callback = function(comboBox, itemName, item)
+                        MoveAddonCategory(catIndex, catName, pos)
+                    end,
+                    --entryType = LSM_ENTRY_TYPE_NORMAL,
+                }
+            end
+            if not ZO_IsTableEmpty(addonCategoriesOrderSubmenu) then
+                AddCustomScrollableSubMenuEntry("Order addon category", addonCategoriesOrderSubmenu)
+            end
         end
     end
 
@@ -1323,8 +1333,8 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- AddOnManager - ScrollList replacement functions
 ------------------------------------------------------------------------------------------------------------------------
-local _AddAddonTypeSection = ADD_ON_MANAGER.AddAddonTypeSection
-local _SetupSectionHeaderRow = ADD_ON_MANAGER.SetupSectionHeaderRow
+local origAddAddonTypeSection   = ADD_ON_MANAGER.AddAddonTypeSection
+local origSetupSectionHeaderRow = ADD_ON_MANAGER.SetupSectionHeaderRow
 ------------------------------------------------------------------------------------------------------------------------
 
 local function BuildMasterList(addOnManagerObject)
@@ -1341,9 +1351,12 @@ local function BuildMasterList(addOnManagerObject)
     addOnManagerObject.addonTypes             = {}
     addOnManagerObject.addonTypes[IS_LIBRARY] = {}
     addOnManagerObject.addonTypes[IS_ADDON]   = {}
-    --Add the categories as new addonType subtale entry
-    for key, value in ipairs(GetAddonCategories(false)) do
-        addOnManagerObject.addonTypes[value] = {}
+    --Add the categories as new addonType subtable entry
+    local customCategories = GetAddonCategories(false, nil)
+    if customCategories ~= nil then
+        for key, value in ipairs(customCategories) do
+            addOnManagerObject.addonTypes[value] = {}
+        end
     end
 
     if addOnManagerObject.selectedCharacterEntry and not addOnManagerObject.selectedCharacterEntry.allCharacters then
@@ -1354,6 +1367,9 @@ local function BuildMasterList(addOnManagerObject)
         AddOnManager:RemoveAddOnFilter()
     end
 
+    --SavedVariables
+    sV = AddonCategory.savedVariables
+    local sVAddon2Category = (sV ~= nil and sV.addon2Category) or {} --SavedVariables or sub table addon2Category might be nil as the BuildMasterList of the addons is done here early!
 
     for i = 1, AddOnManager:GetNumAddOns() do
         local name, title, author, description, enabled, state, isOutOfDate, isLibrary = AddOnManager:GetAddOnInfo(i)
@@ -1380,7 +1396,7 @@ local function BuildMasterList(addOnManagerObject)
         }
 
         --Check if addon was assigned to a category -> in SavedVariables
-        local savedVarsAddonsCategory = sV.addon2Category[name]
+        local savedVarsAddonsCategory = sVAddon2Category[name] or nil
         if savedVarsAddonsCategory ~= nil and addOnManagerObject.addonTypes[savedVarsAddonsCategory] ~= nil then
             entryData.isCustomCategory = true
             entryData.customCategory = savedVarsAddonsCategory
@@ -1485,7 +1501,7 @@ local function AddAddonTypeSection(addOnManagerObject, isLibraryBoolOrCategoryNa
         end
     else
         --For normal addons call the vanilla AddAddonTypeSection ZOs code
-        _AddAddonTypeSection(addOnManagerObject, isLibraryBoolOrCategoryName, sectionTitleText)  --.. " (#" .. tostring(getNumAddonsInCategory(sectionTitleText, true)) .. ")")
+        origAddAddonTypeSection(addOnManagerObject, isLibraryBoolOrCategoryName, sectionTitleText)  --.. " (#" .. tostring(getNumAddonsInCategory(sectionTitleText, true)) .. ")")
     end
 end
 
@@ -1552,7 +1568,7 @@ local function SetupSectionHeaderRow(self, control, data)
         if control.toolBar then
             control.toolBar:SetHidden(true)
         end
-        _SetupSectionHeaderRow(self, control, data)
+        origSetupSectionHeaderRow(self, control, data)
     end
 end
 
@@ -1571,10 +1587,12 @@ local function SortScrollList(addOnManagerObject)
     for listCategoryKey, listCategoryData in ipairs(sV.listCategory) do
         for key, value in pairs(AddonCategory.listAddons) do
             local listCategoryNameAtIndex = listCategoryData.text
-            --Even add the category to the output list if it is empty so one can use it's toolbar context menu toa ssign addons
+            --Even add the category to the output list if it is empty so one can use it's toolbar context menu to assign addons
             --if sV.addon2Category[value] == listCategoryNameAtIndex then
+            if listCategoryNameAtIndex ~= nil then
                 addOnManagerObject:AddAddonTypeSection(listCategoryNameAtIndex, listCategoryNameAtIndex)
                 break
+            end
             --end
         end
     end
@@ -1622,14 +1640,6 @@ local function OnExpandButtonClicked(self, row)
 
     self:CommitScrollList()
 end
-------------------------------------------------------------------------------------------------------------------------
-ADD_ON_MANAGER.BuildMasterList = BuildMasterList
-ADD_ON_MANAGER.AddAddonTypeSection = AddAddonTypeSection
-ADD_ON_MANAGER.SetupSectionHeaderRow = SetupSectionHeaderRow
-ADD_ON_MANAGER.SortScrollList = SortScrollList
-ADD_ON_MANAGER.OnExpandButtonClicked = OnExpandButtonClicked
-------------------------------------------------------------------------------------------------------------------------
-
 
 
 local function alterAddonManagerControl()
@@ -1666,8 +1676,17 @@ function AddonCategory.Initialize()
     --Add buttons to addon manager control
     alterAddonManagerControl()
 
-	--LAM settings menu
+    ------------------------------------------------------------------------------------------------------------------------
+    --Moved to after AddOn init so SVs exist properly
+    ADD_ON_MANAGER.BuildMasterList = BuildMasterList
+    ADD_ON_MANAGER.AddAddonTypeSection = AddAddonTypeSection
+    ADD_ON_MANAGER.SetupSectionHeaderRow = SetupSectionHeaderRow
+    ADD_ON_MANAGER.SortScrollList = SortScrollList
+    ADD_ON_MANAGER.OnExpandButtonClicked = OnExpandButtonClicked
+    ------------------------------------------------------------------------------------------------------------------------
     ADD_ON_MANAGER.BuildMasterList(AddonCategory)
+
+	--LAM settings menu
 	AddonCategory.CreateSettingsWindow()
 end
 

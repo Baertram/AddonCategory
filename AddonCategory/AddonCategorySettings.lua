@@ -13,7 +13,6 @@ local updateCurrentAddOnCategories = AddonCategory.updateCurrentAddOnCategories
 local isAddOnCategory = AddonCategory.isAddOnCategory
 local checkIfAddonsInCategory = AddonCategory.CheckIfAddonsInCategory
 
-local arrayLength = {}
 local addonsList = {}
 local categoryList = {}
 local categoryListIndex = {}
@@ -30,16 +29,8 @@ local function GetAddonsByList()
     return l_addonsList
 end
 
-local function getArrayCategoriesLength()
-    arrayLength = {}
-    for i=1, #AddonCategory.savedVariables.listCategory do
-        table.insert(arrayLength, i)
-    end
-end
-
 local function updateNeededTables()
     addonsList = GetAddonsByList()
-    getArrayCategoriesLength()
     categoryList = GetAddonCategories(false)
     categoryListIndex = GetAddonCategories(true)
 end
@@ -114,7 +105,7 @@ end
 
 local function resetToBaseAddOnCategories()
     if addOnCategoriesAreBaseCategories() then return end
-    local sV = AddonCategory.savedVariables
+    --local sV = AddonCategory.savedVariables
 
     updateCurrentAddOnCategories(false)
 
